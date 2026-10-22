@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: stable
+          cache: true
+
+      - name: System packages (SQLite for tests)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Generate Android scaffold
+        run: |
+          flutter create --org com.pdm --project-name personal_daily_manager --platforms android "$RUNNER_TEMP/scaffold"
+          cp -r "$RUNNER_TEMP/scaffold/android" ./android
+
+      - name: Configure Android (manifest, desugaring, icon)
+        run: |
+          pip install pillow
+          python3 tools/prepare_android.py
+
+      - run: flutter pub get
+
+      - name: Analyze (informational)
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Run tests
+        run: flutter test
+        continue-on-error: true
+
+      - name: Build release APK
+        run: flutter build apk --release --no-shrink
+
+      - name: Name the APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk PersonalDailyManager.apk && ls -l PersonalDailyManager.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PersonalDailyManager-apk
+          path: PersonalDailyManager.apk
